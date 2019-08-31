@@ -1,22 +1,34 @@
-# @micosmo/aframe/lib/utils
+# @micosmo/aframe/gamma
 
-Aframe and threejs utility services
+Aframe component to enable or disable gamma output on the scene's renderer.
 
 ## API
 
 ### IMPORTING
 
 ```javascript
-import { instantiate, ... } from '@micosmo/aframe/lib/utils';
+import require('@micosmo/aframe/gamma');
 ```
 
-### EXPORTS
+### COMPONENTS
 
-Function | Description
--------- | -----------
-stringifyRotation(r) | Return a string representation of a rotation in either Euler, Matrix4 or Quaternion form.
-instantiate(o) | Dynamically instantiate a html snippet and return the root element of the snippet. Currently only supports *o* in string format.
-isVisibleInScene(el) | Traverse the parent hierarchy and determine if *el* is visible in the scene. Return a boolean.
+#### Component: gamma
+
+Enable or disable gamma output on the scene's renderer.
+
+##### SCHEMA
+
+Property | Type | Default | Description
+-------- | ---- | ------- | -----------
+schema | boolean | false | Enable or disable gamma output.
+
+##### METHODS
+
+None
+
+##### PROPERTIES
+
+None
 
 ## LICENSE
 
