@@ -14,7 +14,7 @@
   "author": "Micosmo",
   "license": "ISC",
   "dependencies": {
-    "@micosmo/core": "git+https://github.com/micosmogames/aframe.git"
+    "@micosmo/core": "git+https://github.com/micosmogames/core.git"
   },
   "devDependencies": {
     "eslint": "^6.1.0",
