@@ -1,6 +1,6 @@
 {
   "name": "@micosmo/aframe",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Aframe components, systems and utilities",
   "main": "index.js",
   "homepage": "https://github.com/micosmogames/aframe/README.md",
@@ -14,7 +14,8 @@
   "author": "Micosmo",
   "license": "ISC",
   "dependencies": {
-    "@micosmo/core": "git+https://github.com/micosmogames/core.git"
+    "@micosmo/core": "git+https://github.com/micosmogames/core.git",
+    "@micosmo/async": "git+https://github.com/micosmogames/async.git"
   },
   "devDependencies": {
     "eslint": "^6.1.0",

@@ -4,6 +4,7 @@
  * An extended version of the Aframe 0.9.2 pool component.
  */
 import aframe from "aframe";
+import { createSchemaPersistentObject } from './lib/utils';
 import { removeIndex } from "@micosmo/core/object";
 
 /**
@@ -20,20 +21,27 @@ aframe.registerComponent('mipool', {
     mixin: { default: '' },
     size: { default: 0 },
     maxSize: { default: 1 },
+    threshold: { default: 0 }, // Expansion threshold in number of unused elements
     poolPolicy: { default: 'warn', oneof: ['warn', 'error', 'dynamic', 'ignore'] },
-    visible: { default: true } // Visibility of the a requested entity
+    visible: { default: true } // Visibility of a requested entity
+  },
+  updateSchema(data) {
+    createSchemaPersistentObject(this, data, '_state');
   },
 
   multiple: true,
 
   init() {
-    this.size = 0;
+    this.state = this.data._state;
+    this.state.threshold = this.state.maxSize = 0;
+    this.deletedEls = []; // In case we change the mixin and have old elements still being used.
+    this.availableEls = [];
+    this.usedEls = [];
   },
 
   initPool: function () {
-    this.availableEls = [];
-    this.usedEls = [];
-
+    while (this.usedEls.length > 0) this.deletedEls.push(this.usedEls.pop());
+    this.state.size = this.availableEls.length = this.usedEls.length = 0;
     if (!this.data.mixin)
       console.warn('micosmo:component:mipool:initPool No mixin provided for pool component.');
     if (this.data.container) {
@@ -41,16 +49,31 @@ aframe.registerComponent('mipool', {
       if (!this.container)
         console.warn('micosmo:component:mipool:initPool Container ' + this.data.container + ' not found.');
     }
-    this.container = this.container || this.el;
-
-    while (this.size < this.data.size)
-      this.createEntity();
+    if (!this.container)
+      this.container = this.el;
   },
 
   update: function (oldData) {
     var data = this.data;
-    if (oldData.mixin !== data.mixin || oldData.size !== data.size) {
+    if (oldData.mixin !== data.mixin)
       this.initPool();
+    if (oldData.size !== data.size) {
+      this.state.maxSize = Math.max(data.size, this.state.maxSize);
+      for (let i = data.size - this.state.size; i > 0; i--)
+        this.createEntity();
+    }
+    if (oldData.threshold !== data.threshold && data.threshold > this.state.threshold)
+      this.state.threshold = data.threshhold;
+    if (oldData.maxSize !== data.maxSize) {
+      this.state.maxSize = Math.max(data.maxSize, data.size);
+      const tgt = Math.ceil(data.size / 2);
+      if (this.state.threshold === 0 && this.state.threshold < tgt) this.state.threshold = tgt;
+    }
+    if (oldData.poolPolicy !== data.poolPolicy) {
+      if (data.poolPolicy === 'dynamic') {
+        const tgt = Math.ceil(data.size / 2);
+        if (this.state.threshold === 0 && this.state.threshold < tgt) this.state.threshold = tgt;
+      }
     }
   },
 
@@ -58,16 +81,19 @@ aframe.registerComponent('mipool', {
    * Add a new entity to the list of available entities.
    */
   createEntity: function () {
-    var el;
-    el = document.createElement('a-entity');
+    const el = document.createElement('a-entity');
     el.play = this.wrapPlay(el.play);
     el.setAttribute('mixin', this.data.mixin);
     el.object3D.visible = false;
-    el.emit('pool-add', undefined, false);
     el.pause();
     this.container.appendChild(el);
-    this.availableEls.push(el);
-    this.size++;
+    const listener = () => {
+      el.emit('pool-add', undefined, false);
+      this.availableEls.push(el);
+      this.state.size++;
+      el.removeEventListener('loaded', listener);
+    };
+    el.addEventListener('loaded', listener);
   },
 
   /**
@@ -77,7 +103,7 @@ aframe.registerComponent('mipool', {
   wrapPlay: function (playMethod) {
     var usedEls = this.usedEls;
     return function () {
-      if (usedEls.indexOf(this) === -1) { return; }
+      if (usedEls.indexOf(this) < 0) return;
       playMethod.call(this);
     };
   },
@@ -86,26 +112,30 @@ aframe.registerComponent('mipool', {
    * Used to request one of the available entities of the pool.
    */
   requestEntity: function () {
-    var el;
-    if (this.availableEls.length === 0) {
-      if (this.size < this.data.maxSize)
+    if (this.state.threshold && this.availableEls.length <= this.state.threshold) {
+      if (this.state.size < this.state.maxSize)
         this.createEntity();
       else if (this.data.poolPolicy === 'dynamic') {
-        if (this.state.size >= this.state.maxSize * 2) {
-          console.warn(`micosmo:component:mipool:requestEntity: Pool(${this.attrName}) is empty. Possible runaway dynamic expansion`);
-          return;
+        if (this.state.size >= this.state.maxSize * 2)
+          console.warn(`micosmo:component:mipool:requestEntity: Pool(${this.attrName}) is still expanding. Possible runaway dynamic expansion`);
+        else if (!this.dynamicInfo) {
+          console.info(`micosmo:component:mipool:requestEntity: Pool(${this.attrName}) is dynamically expanding`);
+          this.dynamicInfo = true;
         }
-        console.warn(`micosmo:component:mipool:requestEntity: Pool(${this.attrName}) is empty. Dynamically expanding`);
         this.createEntity();
-      } else if (this.data.poolPolicy === 'ignore')
+      }
+    }
+    if (this.availableEls.length === 0) {
+      if (this.data.poolPolicy === 'ignore')
         return;
       else if (this.data.poolPolicy === 'warn') {
         console.warn(`micosmo:component:mipool:requestEntity: Pool(${this.attrName}) is empty. Cannot expand`);
         return;
-      } else if (this.data.poolPolicy === 'error')
-        throw new Error(`micosmo:component:mipool:requestEntity: Pool(${this.attrName}) is empty. Cannot expand`);
+      }
+      // 'error' or 'dynamic'
+      throw new Error(`micosmo:component:mipool:requestEntity: Pool(${this.attrName}) is empty. Cannot expand`);
     }
-    el = this.availableEls.shift();
+    const el = this.availableEls.shift();
     el.emit('pool-remove', undefined, false);
     this.usedEls.push(el);
     el.object3D.visible = this.data.visible;
@@ -116,9 +146,12 @@ aframe.registerComponent('mipool', {
    * Used to return a used entity to the pool.
    */
   returnEntity: function (el) {
-    var index = this.usedEls.indexOf(el);
-    if (index === -1) {
-      console.warn('micosmo:component:mipool:returnEntity: The returned entity was not previously pooled from ' + this.attrName);
+    let index = this.usedEls.indexOf(el);
+    if (index < 0) {
+      if ((index = this.deletedEls.indexOf(el)) < 0)
+        console.warn('micosmo:component:mipool:returnEntity: The returned entity was not previously pooled from ' + this.attrName);
+      else
+        removeIndex(this.deletedEls, index);
       return;
     }
     removeIndex(this.usedEls, index);
