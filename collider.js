@@ -1,6 +1,7 @@
 /* global THREE */
 import aframe from "aframe";
 import { bindEvent } from "aframe-event-decorators";
+import { requestObject, returnObject } from "@micosmo/core/object";
 import { isVisibleInScene } from "./lib/utils";
 
 const v1 = new THREE.Vector3();
@@ -46,7 +47,7 @@ aframe.registerSystem("collider", {
       for (const c2 of cols) {
         if (!this.hasCollided(c1, c2, this.prevCollisions)) {
           this.addCollision(c1, c2, this.newCollisions);
-          c1.emit("collisionstart", c2);
+          emitEvent("collisionstart", c1, c2);
         }
       }
     }
@@ -55,7 +56,7 @@ aframe.registerSystem("collider", {
     for (const [c1, cols] of this.prevCollisions) {
       for (const c2 of cols) {
         if (!this.hasCollided(c1, c2)) {
-          c1.emit("collisionend", c2);
+          emitEvent("collisionend", c1, c2);
         }
       }
     }
@@ -183,6 +184,20 @@ aframe.registerSystem("collider", {
   }
 });
 
+function emitEvent(name, el, elWith) {
+  const elTarget = el.components.collider.data.eventTarget;
+  if (!elTarget)
+    el.emit(name, elWith, true); // Original implementation bubbles
+  else {
+    const detail = requestObject();
+    detail.el1 = el; detail.el2 = elWith;
+    detail.layer1 = el.components.collider.data.layer;
+    detail.layer2 = elWith.components.collider.data.layer;
+    elTarget.emit(name, detail, false); // Target events don't bubble
+    returnObject(detail);
+  }
+}
+
 const shapeNames = ["sphere", "box"];
 
 const shapeSchemas = {
@@ -205,7 +220,8 @@ aframe.registerComponent("collider", {
     enabled: { default: true },
     shape: { default: "sphere", oneOf: shapeNames },
     layer: { default: "default" },
-    collidesWith: { type: "array" }
+    collidesWith: { type: "array" },
+    eventTarget: { type: "selector" }
   },
 
   init: function () {
