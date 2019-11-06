@@ -38,6 +38,7 @@ import { requestObject, returnObject } from '@micosmo/core/object';
 import { declareMethods, method } from '@micosmo/core/method';
 import { StringBuilder, parseNameValues } from '@micosmo/core/string';
 import { copyValues } from '@micosmo/core/replicate';
+import { Threadlet } from '@micosmo/async/threadlet';
 import { createSchemaPersistentObject } from './lib/utils';
 
 declareMethods(disperseEvent);
@@ -64,9 +65,18 @@ aframe.registerComponent("states", {
       throw new Error(`micosmo:component:states:update: 'dispersePattern' is required.`);
     this.intState.disperseFormat = parsePattern(this.data.dispersePattern, this.intState.disperseFormat);
   },
-  chain(state, fromCtxt, toCtxt) { emitStateChange(this, this.intState.currentState, state, fromCtxt, toCtxt, 'chain') },
-  call(state, fromCtxt, toCtxt) { callAndEmit(this, state, fromCtxt, toCtxt) },
-  return(state, fromCtxt, toCtxt) { returnAndEmit(this, state, fromCtxt, toCtxt) },
+  chain(state, fromCtxt, toCtxt) {
+    Threadlet.DefaultPriority.run(() => { emitStateChange(this, this.intState.currentState, state, fromCtxt, toCtxt, 'chain') });
+  },
+  call(state, fromCtxt, toCtxt) {
+    Threadlet.DefaultPriority.run(() => { callAndEmit(this, state, fromCtxt, toCtxt) });
+  },
+  return(state, fromCtxt, toCtxt) {
+    Threadlet.DefaultPriority.run(() => { returnAndEmit(this, state, fromCtxt, toCtxt) });
+  },
+  syncChain(state, fromCtxt, toCtxt) { emitStateChange(this, this.intState.currentState, state, fromCtxt, toCtxt, 'chain') },
+  syncCall(state, fromCtxt, toCtxt) { callAndEmit(this, state, fromCtxt, toCtxt) },
+  syncReturn(state, fromCtxt, toCtxt) { returnAndEmit(this, state, fromCtxt, toCtxt) },
 });
 
 function callAndEmit(states, state, fromCtxt, toCtxt) {
