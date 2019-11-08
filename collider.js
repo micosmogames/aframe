@@ -30,13 +30,12 @@ aframe.registerSystem("collider", {
     this.collisions = temp;
 
     for (const c1 of this.colliders) {
-      const layers = c1.getAttribute("collider").collidesWith;
+      const layers = c1.data.collidesWith;
       for (const layer of layers) {
         if (!this.layers.has(layer)) continue;
         for (const c2 of this.layers.get(layer)) {
-          if (c1 !== c2) {
+          if (c1 !== c2)
             this.addAnyCollisions(c1, c2);
-          }
         }
       }
     }
@@ -55,84 +54,51 @@ aframe.registerSystem("collider", {
     // Find collision which have cleared
     for (const [c1, cols] of this.prevCollisions) {
       for (const c2 of cols) {
-        if (!this.hasCollided(c1, c2)) {
+        if (!this.hasCollided(c1, c2))
           emitEvent("collisionend", c1, c2);
-        }
       }
     }
   },
   addAnyCollisions(c1, c2) {
-    if (
-      c1.components === undefined ||
-      c1.components.collider === undefined ||
-      c2.components === undefined ||
-      c2.components.collider === undefined
-    ) {
+    const el1 = c1.el; const el2 = c2.el;
+    if (el1.components === undefined || el1.components[c1.attrName] === undefined ||
+      el2.components === undefined || el2.components[c2.attrName] === undefined) {
       return;
-    } else if (!c1.isPlaying || !c2.isPlaying) {
+    } else if (!el1.isPlaying || !el2.isPlaying)
       return;
-    } else if (
-      !c1.getAttribute("collider").collideNonVisible &&
-      (!isVisibleInScene(c2) || !isVisibleInScene(c1))
-    ) {
+    else if (!c1.data.collideNonVisible && (!isVisibleInScene(el2) || !isVisibleInScene(el1)))
       return;
-    }
-    const shape1 = c1.getAttribute("collider").shape;
-    const shape2 = c2.getAttribute("collider").shape;
-    let isCollided = false;
-    if (shape1 === "sphere" && shape2 === "sphere") {
-      isCollided = this.collisionSphereSphere(
-        c1.components.collider,
-        c2.components.collider
-      );
-    } else if (shape1 === "sphere" && shape2 === "box") {
-      isCollided = this.collisionSphereBox(
-        c1.components.collider,
-        c2.components.collider
-      );
-    } else if (shape1 === "box" && shape2 === "sphere") {
-      isCollided = this.collisionSphereBox(
-        c2.components.collider,
-        c1.components.collider
-      );
-    } else if ((shape1 === shape2) === "box") {
-      isCollided = this.collisionBoxBox(
-        c2.components.collider,
-        c1.components.collider
-      );
-    }
 
-    if (isCollided) {
+    const methName = `collision_${c1.data.shape}_${c2.data.shape}`;
+    if (!this[methName])
+      throw new Error(`micosmo:system:collider:addAnyCollisions: Invalid shape(s). Shape1(${c1.data.shape}) Shape2(${c2.data.shape})`)
+    if (this[methName](c1, c2))
       this.addCollision(c1, c2);
-    }
   },
   addCollision(c1, c2, list = this.collisions) {
-    if (!this.collisions.has(c1)) {
-      this.collisions.set(c1, new Set());
-    }
+    // If our primary collider is ignoring duplicates then check whether we have already
+    // recordered the reverse collision and ignore.
+    if (c1.data.ignoreDuplicates && this.collisions.has(c2) && this.collisions.get(c2).has(c1))
+      return;
+    if (!this.collisions.has(c1)) this.collisions.set(c1, new Set());
     this.collisions.get(c1).add(c2);
   },
   hasCollided(collider, other, list = this.collisions) {
-    if (list.has(collider) && list.get(collider).has(other)) {
-      return true;
-    }
-    return false;
+    return list.has(collider) && list.get(collider).has(other)
   },
-  collisionSphereSphere: (() => {
+  collision_sphere_sphere: (() => {
     const v1 = new THREE.Vector3();
     const v2 = new THREE.Vector3();
-
     return (sphere1, sphere2) => {
       const s1Pos = sphere1.el.object3D.getWorldPosition(v1);
       const s2Pos = sphere2.el.object3D.getWorldPosition(v2);
       const distance = s1Pos.distanceTo(s2Pos);
-      const combinedRadius =
-        sphere1.getScaledRadius() + sphere2.getScaledRadius();
-
+      const combinedRadius = sphere1.getScaledRadius() + sphere2.getScaledRadius();
       return distance <= combinedRadius;
     };
   })(),
-  collisionSphereBox: (() => {
+  collision_box_sphere(c1, c2) { return this.collision_sphere_box(c2, c1) },
+  collision_sphere_box: (() => {
     const v1 = new THREE.Vector3();
     const v2 = new THREE.Vector3();
     const v3 = new THREE.Vector3();
@@ -151,7 +117,7 @@ aframe.registerSystem("collider", {
       return b.intersectsSphere(s);
     };
   })(),
-  collisionBoxBox: (() => {
+  collision_box_box: (() => {
     const v1 = new THREE.Vector3();
     const v2 = new THREE.Vector3();
     const v3 = new THREE.Vector3();
@@ -184,15 +150,16 @@ aframe.registerSystem("collider", {
   }
 });
 
-function emitEvent(name, el, elWith) {
-  const elTarget = el.components.collider.data.eventTarget;
+function emitEvent(name, c1, c2) {
+  const el = c1.el; const elWith = c2.el;
+  const elTarget = el.components[c1.attrName].data.eventTarget;
   if (!elTarget)
     el.emit(name, elWith, true); // Original implementation bubbles
   else {
     const detail = requestObject();
     detail.el1 = el; detail.el2 = elWith;
-    detail.layer1 = el.components.collider.data.layer;
-    detail.layer2 = elWith.components.collider.data.layer;
+    detail.layer1 = el.components[c1.attrName].data.layer;
+    detail.layer2 = elWith.components[c2.attrName].data.layer;
     elTarget.emit(name, detail, false); // Target events don't bubble
     returnObject(detail);
   }
@@ -221,60 +188,51 @@ aframe.registerComponent("collider", {
     shape: { default: "sphere", oneOf: shapeNames },
     layer: { default: "default" },
     collidesWith: { type: "array" },
-    eventTarget: { type: "selector" }
+    eventTarget: { type: "selector" },
+    ignoreDuplicates: { default: false }
   },
-
-  init: function () {
-    this._debugMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(this.data.radius, 6, 6),
-      debugMaterial
-    );
+  multiple: true,
+  init() {
+    this._debugMesh = new THREE.Mesh(new THREE.SphereGeometry(this.data.radius, 6, 6), debugMaterial);
     this._debugMesh.visible = false;
     this.el.object3D.add(this._debugMesh);
-
-    if (aframe.INSPECTOR && aframe.INSPECTOR.inspectorActive) {
+    if (aframe.INSPECTOR && aframe.INSPECTOR.inspectorActive)
       this.inspectorEnabled();
-    }
   },
-  update: function (oldData) {
+  update(oldData) {
     if (this.data.layer !== oldData.layer) {
-      if (oldData.layer !== undefined) {
-        this.system.removeCollider(this.el, oldData.layer);
-      }
-      this.system.addCollider(this.el, this.data.layer);
+      if (oldData.layer !== undefined)
+        this.system.removeCollider(this, oldData.layer);
+      this.system.addCollider(this, this.data.layer);
     }
   },
-  remove: function () {
-    this.system.removeCollider(this.el, this.data.layer);
+  remove() {
+    this.system.removeCollider(this, this.data.layer);
   },
-  inspectorenabled: bindEvent(
-    { listenIn: "init", removeIn: "remove", target: "a-scene" },
-    function () {
-      this._debugMesh.visible = true;
-      this.rebuildDebugMesh();
-    }
-  ),
-  inspectordisabled: bindEvent(
-    { listenIn: "init", removeIn: "remove", target: "a-scene" },
-    function () {
-      this._debugMesh.visible = false;
-    }
-  ),
+
+  inspectorenabled: bindEvent({ target: "a-scene" }, function () {
+    this._debugMesh.visible = true;
+    this.rebuildDebugMesh();
+  }),
+  inspectordisabled: bindEvent({ target: "a-scene" }, function () {
+    this._debugMesh.visible = false;
+  }),
   inspectorcomponentchanged: bindEvent(function () {
     this.rebuildDebugMesh();
   }),
-  getScaledRadius: function () {
+
+  getScaledRadius() {
     const scale = this.el.object3D.getWorldScale(v1);
     return Math.max(scale.x, Math.max(scale.y, scale.z)) * this.data.radius;
   },
-  getScaledDimensions: function (target) {
+  getScaledDimensions(target) {
     const scale = this.el.object3D.getWorldScale(v1);
     target
       .set(this.data.width, this.data.height, this.data.depth)
       .multiply(scale);
     return target;
   },
-  rebuildDebugMesh: function () {
+  rebuildDebugMesh() {
     if (this.data.shape === "sphere") {
       const scaledRadius = this.getScaledRadius();
       this._debugMesh.geometry = new THREE.SphereGeometry(scaledRadius, 6, 6);
@@ -291,14 +249,12 @@ aframe.registerComponent("collider", {
     this.el.object3D.getWorldScale(s);
     s.set(1 / s.x, 1 / s.y, 1 / s.z);
   },
-  updateSchema: function (data) {
+  updateSchema(data) {
     const newShape = data.shape;
     const currentShape = this.data && this.data.shape;
     const shape = newShape || currentShape;
     const schema = shapeSchemas[shape];
-    if (!schema) {
-      console.error("unknown shape: " + shape);
-    }
+    if (!schema) console.error("unknown shape: " + shape);
     if (currentShape && newShape === currentShape) return;
     this.extendSchema(schema);
   }
