@@ -61,8 +61,8 @@ aframe.registerSystem("collider", {
   },
   addAnyCollisions(c1, c2) {
     const el1 = c1.el; const el2 = c2.el;
-    if (el1.components === undefined || el1.components[c1.attrName] === undefined ||
-      el2.components === undefined || el2.components[c2.attrName] === undefined) {
+    if (el1.components === undefined || el1.components[c1.attrName] === undefined || !c1.data.enabled ||
+      el2.components === undefined || el2.components[c2.attrName] === undefined || !c2.data.enabled) {
       return;
     } else if (!el1.isPlaying || !el2.isPlaying)
       return;
@@ -138,9 +138,8 @@ aframe.registerSystem("collider", {
     };
   })(),
   addCollider(c, layer) {
-    if (!this.layers.has(layer)) {
+    if (!this.layers.has(layer))
       this.layers.set(layer, new Set());
-    }
     this.layers.get(layer).add(c);
     this.colliders.add(c);
   },
@@ -189,18 +188,20 @@ aframe.registerComponent("collider", {
     layer: { default: "default" },
     collidesWith: { type: "array" },
     eventTarget: { type: "selector" },
-    ignoreDuplicates: { default: false }
+    ignoreDuplicates: { default: false },
+    policy: { default: 'init', oneof: ['init', 'play', 'pool'] }
   },
   multiple: true,
   init() {
     this._debugMesh = new THREE.Mesh(new THREE.SphereGeometry(this.data.radius, 6, 6), debugMaterial);
     this._debugMesh.visible = false;
+    this.activated = false;
     this.el.object3D.add(this._debugMesh);
     if (aframe.INSPECTOR && aframe.INSPECTOR.inspectorActive)
       this.inspectorEnabled();
   },
   update(oldData) {
-    if (this.data.layer !== oldData.layer) {
+    if (this.data.layer !== oldData.layer && (this.activated || this.data.policy === 'init')) {
       if (oldData.layer !== undefined)
         this.system.removeCollider(this, oldData.layer);
       this.system.addCollider(this, this.data.layer);
@@ -220,6 +221,28 @@ aframe.registerComponent("collider", {
   inspectorcomponentchanged: bindEvent(function () {
     this.rebuildDebugMesh();
   }),
+
+  'pool-remove': bindEvent(function () {
+    if (this.data.policy !== 'pool') return;
+    this.system.addCollider(this, this.data.layer);
+    this.activated = true;
+  }),
+  'pool-return': bindEvent(function () {
+    if (this.data.policy !== 'pool') return;
+    this.system.removeCollider(this, this.data.layer);
+    this.activated = false;
+  }),
+
+  play() {
+    if (this.data.policy !== 'play') return;
+    this.system.addCollider(this, this.data.layer);
+    this.activated = true;
+  },
+  pause() {
+    if (this.data.policy !== 'play') return;
+    this.system.removeCollider(this, this.data.layer);
+    this.activated = false;
+  },
 
   getScaledRadius() {
     const scale = this.el.object3D.getWorldScale(v1);

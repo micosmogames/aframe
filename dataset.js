@@ -16,31 +16,55 @@ import aframe from 'aframe';
 import { copyValues } from '@micosmo/core/replicate';
 import { parseNameValues, skipRight, stringifyNameValues } from '@micosmo/core/string';
 import { hasOwnProperty } from '@micosmo/core/object';
-import { stringify } from 'querystring';
+import { declareMethods, method } from '@micosmo/core/method';
+
+declareMethods(dsInit, dsUpdate, dsGetData, dsCopyData);
 
 aframe.registerComponent("dataset", {
   schema: { default: '' },
   multiple: true,
-  init() {
-    if (!this.id)
-      throw new Error(`micosmo:component:dataset:init: Dataset components must have an id. Ex data__foo`);
-    this.group = this.el.components.datagroup;
-    if (!this.group)
-      throw new Error(`micosmo:component:dataset:init: Data components must be in a datagroup element`);
-  },
-  update(oldData) {
-    if (oldData && oldData !== '')
-      throw new Error(`micosmo:component:dataset:update: Dataset components can not be updated. They can only be extended.`);
-    const compExtend = this.el.components['extend-datagroup'];
-    if (!compExtend && this.el.getAttribute('extend-datagroup'))
-      throw new Error(`micosmo:component:dataset:update: The 'extend-datagroup' component must be placed before 'dataset' components`);
-    const oDataset = (compExtend && compExtend.copyData(this.id)) || Object.create(null);
-    this.dataset = Object.freeze(this.system.parse(this.data, oDataset, { defaultDatasetName: this.id, defaultDatagroup: this.group }));
-    this.group.addDataset(this);
-  },
-  getData() { return this.dataset },
-  copyData() { return copyValues(this.dataset) }
+  init: dsInit,
+  update: dsUpdate,
+  getData: dsGetData,
+  copyData: dsCopyData
 });
+
+aframe.registerComponent("ds", {
+  schema: { default: '' },
+  multiple: true,
+  init: method(dsInit),
+  update: method(dsUpdate),
+  getData: method(dsGetData),
+  copyData: method(dsCopyData)
+});
+
+method(dsInit);
+function dsInit() {
+  if (!this.id)
+    throw new Error(`micosmo:component:dataset:init: Dataset components must have an id. Ex data__foo`);
+  if (!this.system) this.system = this.el.sceneEl.systems.dataset;
+  this.group = this.el.components.datagroup;
+  if (!this.group)
+    throw new Error(`micosmo:component:dataset:init: Data components must be in a datagroup element`);
+}
+
+method(dsUpdate);
+function dsUpdate(oldData) {
+  if (oldData && oldData !== '')
+    throw new Error(`micosmo:component:dataset:update: Dataset components can not be updated. They can only be extended.`);
+  const compExtend = this.el.components['extend-datagroup'];
+  if (!compExtend && this.el.getAttribute('extend-datagroup'))
+    throw new Error(`micosmo:component:dataset:update: The 'extend-datagroup' component must be placed before 'dataset' components`);
+  const oDataset = (compExtend && compExtend.copyData(this.id)) || Object.create(null);
+  this.dataset = Object.freeze(this.system.parse(this.data, oDataset, { defaultDatasetName: this.id, defaultDatagroup: this.group }));
+  this.group.addDataset(this);
+}
+
+method(dsGetData);
+function dsGetData() { return this.dataset }
+
+method(dsCopyData);
+function dsCopyData() { return copyValues(this.dataset) }
 
 const EmptyData = Object.freeze(Object.create(null));
 
@@ -186,10 +210,15 @@ aframe.registerComponent("mi", {
     if (!this.id)
       throw new Error(`micosmo:component:mi:init: A mi component must have an id. Ex. mi__material`);
     this.tgtAttrName = this.id;
-    let i; this.tgtCompName = (i = this.tgtAttrName.indexOf('__')) < 0 ? this.tgtAttrName : this.tgtAttrName.substring(0, i);
+    let i; this.tgtCompName = (i = this.tgtAttrName.indexOf('__')) < 0 ? this.tgtAttrName : this.tgtAttrName.substr(0, i);
     this.sysDataset = this.el.sceneEl.systems.dataset;
   },
   update() {
-    this.el.setAttribute(this.tgtAttrName, this.sysDataset.asString(this.sysDataset.parse(this.data, undefined, { defaultDatasetName: this.tgtCompName })));
+    let data = this.data;
+    if (typeof data === 'object') {
+      // Bug with mixins attempting to parse a non schema component.
+      data = stringifyNameValues(data);
+    }
+    this.el.setAttribute(this.tgtAttrName, this.sysDataset.asString(this.sysDataset.parse(data, undefined, { defaultDatasetName: this.tgtCompName })));
   }
 });

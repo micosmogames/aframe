@@ -4,8 +4,9 @@
  * An extended version of the Aframe 0.9.2 pool component.
  */
 import aframe from "aframe";
-import { createSchemaPersistentObject } from './lib/utils';
 import { removeIndex } from "@micosmo/core/object";
+import { createSchemaPersistentObject, instantiateDatagroup } from './lib/utils';
+import { onLoadedDo } from "./startup";
 
 /**
  * Pool component to reuse entities.
@@ -19,6 +20,7 @@ aframe.registerComponent('mipool', {
   schema: {
     container: { default: '' },
     mixin: { default: '' },
+    datagroup: { default: '' },
     size: { default: 0 },
     maxSize: { default: 1 },
     threshold: { default: 0 }, // Expansion threshold in number of unused elements
@@ -37,17 +39,18 @@ aframe.registerComponent('mipool', {
     this.deletedEls = []; // In case we change the mixin and have old elements still being used.
     this.availableEls = [];
     this.usedEls = [];
+    onLoadedDo(() => { this.sysDataset = this.el.sceneEl.systems.dataset });
   },
 
   initPool: function () {
     while (this.usedEls.length > 0) this.deletedEls.push(this.usedEls.pop());
     this.state.size = this.availableEls.length = this.usedEls.length = 0;
-    if (!this.data.mixin)
-      console.warn('micosmo:component:mipool:initPool No mixin provided for pool component.');
+    if (!this.data.mixin && !this.data.datagroup)
+      console.warn(`micosmo:component:mipool:initPool No 'mixin' or 'datagroup' provided for pool component '${this.attrName}'.`);
     if (this.data.container) {
       this.container = document.querySelector(this.data.container);
       if (!this.container)
-        console.warn('micosmo:component:mipool:initPool Container ' + this.data.container + ' not found.');
+        console.warn(`micosmo:component:mipool:initPool Container ' + this.data.container + ' not found for '${this.attrName}'.`);
     }
     if (!this.container)
       this.container = this.el;
@@ -55,7 +58,7 @@ aframe.registerComponent('mipool', {
 
   update: function (oldData) {
     var data = this.data;
-    if (oldData.mixin !== data.mixin)
+    if (oldData.mixin !== data.mixin || oldData.datagroup !== data.datagroup)
       this.initPool();
     if (oldData.size !== data.size) {
       this.state.maxSize = Math.max(data.size, this.state.maxSize);
@@ -83,7 +86,10 @@ aframe.registerComponent('mipool', {
   createEntity: function () {
     const el = document.createElement('a-entity');
     el.play = this.wrapPlay(el.play);
-    el.setAttribute('mixin', this.data.mixin);
+    if (this.data.datagroup)
+      instantiateDatagroup(this.sysDataset.getDatagroup(this.data.datagroup), el);
+    else
+      el.setAttribute('mixin', this.data.mixin);
     el.object3D.visible = false;
     el.pause();
     this.container.appendChild(el);
