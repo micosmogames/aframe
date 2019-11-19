@@ -17,6 +17,7 @@ import { copyValues } from '@micosmo/core/replicate';
 import { parseNameValues, skipRight, stringifyNameValues } from '@micosmo/core/string';
 import { hasOwnProperty } from '@micosmo/core/object';
 import { declareMethods, method } from '@micosmo/core/method';
+import { onLoadedDo } from './startup';
 
 declareMethods(dsInit, dsUpdate, dsGetData, dsCopyData);
 
@@ -95,8 +96,17 @@ aframe.registerComponent("datagroup", {
     this.sysDataset = this.el.sceneEl.systems.dataset;
     this.sysDataset.addDatagroup(this.name, this);
     this.datasets = Object.create(null);
+    this.datagroups = Object.create(null);
+    onLoadedDo(() => {
+      this.parentGroup = this.el.parentElement.components && this.el.parentElement.components.datagroup;
+      if (this.parentGroup)
+        this.parentGroup.addDatagroup(this);
+    });
   },
   addDataset(ds) { this.datasets[ds.id] = ds },
+  addDatagroup(dg) { this.datagroups[dg.name] = dg },
+  findDataset(dsName) { return this.datasets[dsName] },
+  findDatagroup(dgName) { return this.datagroups[dgName] },
   getData(dsName) { const comp = this.datasets[dsName]; return (comp && comp.getData()) || EmptyData },
   copyData(dsName) { return copyValues(this.getData(dsName)) },
   hasDataFor(dsName) { return this.datasets[dsName] !== undefined },
@@ -120,7 +130,7 @@ aframe.registerSystem("dataset", {
   getDatagroup(name) {
     const group = this.findDatagroup(name);
     if (!group)
-      throw new Error(`micosmo:system:dataset:getDataGroup: Group '${name}' was not found`);
+      throw new Error(`micosmo:system:dataset:getDatagroup: Group '${name}' was not found`);
     return group;
   },
   findDatagroup(name) {
