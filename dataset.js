@@ -18,6 +18,7 @@ import { parseNameValues, skipRight, stringifyNameValues } from '@micosmo/core/s
 import { hasOwnProperty } from '@micosmo/core/object';
 import { declareMethods, method } from '@micosmo/core/method';
 import { onLoadedDo } from './startup';
+import { instantiateDatagroup } from './lib/utils';
 
 declareMethods(dsInit, dsUpdate, dsGetData, dsCopyData);
 
@@ -230,5 +231,28 @@ aframe.registerComponent("mi", {
       data = stringifyNameValues(data);
     }
     this.el.setAttribute(this.tgtAttrName, this.sysDataset.asString(this.sysDataset.parse(data, undefined, { defaultDatasetName: this.tgtCompName })));
+  }
+});
+
+// Populates an entity with attributes that are defined within a datagroup
+aframe.registerComponent("mientity", {
+  schema: {
+    datagroup: { default: '' }
+  },
+  multiple: true,
+  update() {
+    if (this.updated)
+      throw new Error(`micosmo:component:mientity:update: Component can not be updated`);
+    this.updated = true;
+    instantiateDatagroup(this.el.sceneEl.systems.dataset.getDatagroup(this.data.datagroup), this.el)
+  }
+});
+
+aframe.registerPrimitive('a-mientity', {
+  defaultComponents: {
+    mientity: {}
+  },
+  mappings: {
+    dg: 'mientity.datagroup'
   }
 });
