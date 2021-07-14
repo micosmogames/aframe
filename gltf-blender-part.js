@@ -136,7 +136,8 @@ aframe.registerComponent("gltf-blender-part", {
       }
       mesh = mesh.clone(true);
 
-      mesh.applyMatrix(new THREE.Matrix4());
+      // mesh.applyMatrix(new THREE.Matrix4());
+      mesh.position.set(0, 0, 0); // AT - Fix from Trajectile Command
 
       if (this.data.buffer) {
         mesh.geometry = mesh.geometry.toNonIndexed();
